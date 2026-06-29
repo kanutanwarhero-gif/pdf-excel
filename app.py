@@ -1,3 +1,5 @@
+from pdf_reader import pdf_to_images
+from ocr import read_barcode
 import streamlit as st
 import os
 import pandas as pd
@@ -74,4 +76,10 @@ if st.button("Process"):
 
     else:
 
-        st.success("Next Part Ready...")
+     images = pdf_to_images(pdf_path)
+
+for i, img in enumerate(images):
+
+    awb = read_barcode(img)
+
+    st.write(f"Page {i+1} : {awb}")
