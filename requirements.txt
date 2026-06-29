@@ -1,7 +1,4 @@
 streamlit
 pandas
 pymupdf
-easyocr
-opencv-python-headless
-pillow
-numpy
+pytesseract
