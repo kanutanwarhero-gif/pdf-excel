@@ -81,7 +81,7 @@ if st.button("Process"):
                     
                     # Font structure with upscale size
                     try:
-                        font = ImageFont.load_default(size=45)
+                        font = ImageFont.load_default(size=30)
                     except:
                         font = ImageFont.load_default()
                     
