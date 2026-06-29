@@ -67,19 +67,14 @@ if excel_file:
 if st.button("Process"):
 
     if pdf_file is None:
-
         st.error("Upload PDF")
 
     elif excel_file is None:
-
         st.error("Upload Excel")
 
     else:
+        images = pdf_to_images(pdf_path)
 
-     images = pdf_to_images(pdf_path)
-
-for i, img in enumerate(images):
-
-    awb = read_barcode(img)
-
-    st.write(f"Page {i+1} : {awb}")
+        for i, img in enumerate(images):
+            awb = read_barcode(img)
+            st.write(f"Page {i+1}: {awb}")
