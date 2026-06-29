@@ -86,7 +86,7 @@ if st.button("Process"):
                         font = ImageFont.load_default()
                     
                     # Location
-                    position = (35, h - 90)
+                    position = (35, h - 95)
                     
                     # STROKE LOCK FOR BOLD
                     draw.text(
