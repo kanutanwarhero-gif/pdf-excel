@@ -3,7 +3,12 @@ import zxingcpp
 def read_barcode(image):
     results = zxingcpp.read_barcodes(image)
 
-    for r in results:
-        print(r.format, r.text)
+    if not results:
+        return "No barcode found"
 
-    return None
+    output = []
+
+    for r in results:
+        output.append(f"{r.format} -> {r.text}")
+
+    return " | ".join(output)
