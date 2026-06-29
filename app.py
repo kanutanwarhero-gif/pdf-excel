@@ -4,7 +4,7 @@ from ocr import read_barcode
 import streamlit as st
 import os
 import pandas as pd
-from PIL import Image, ImageDraw, ImageFont  # Image par direct write karne ke liye
+from PIL import Image, ImageDraw
 
 st.set_page_config(
     page_title="Amazon Label Mapper",
@@ -12,7 +12,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("📦 Amazon Label Mapper")
+st.title("📦 Amazon Label Mapper (4x6 Size Locked)")
 st.write("Upload Shipping Label PDF and CSV/Excel")
 
 pdf_file = st.file_uploader("Upload PDF", type=["pdf"])
@@ -46,28 +46,22 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
-        # CSV clean matching setup
+        # CSV formatting clean up
         df.columns = [str(c).strip() for c in df.columns]
         df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
-        # Original code se image frames read karna
+        # --- 4x6 SIZE & LAYOUT LOCK ---
+        # Hum direct original PDF frame me hi text injection karenge bina image conversion crash ke
+        # Isse page dimensions (4x6 thermal format) 100% same rahega aur stretch nahi hoga
+        doc = fitz.open(pdf_path)
         images = pdf_to_images(pdf_path)
-        processed_images = []
         match_count = 0
         
-        st.info(f"⚡ Total {len(images)} pages process ho rahe hain...")
+        st.info(f"⚡ Processing {len(images)} pages...")
         
         for i, img in enumerate(images):
             awb = read_barcode(img)
             
-            # Agar img direct PIL Image nahi h, toh ensure karein ki conversion sahi ho
-            if not isinstance(img, Image.Image):
-                # Agar image bytes ya numpy array me h toh handle karne ke liye wrapper
-                try:
-                    img = Image.fromarray(img)
-                except:
-                    pass
-
             if awb:
                 awb_clean = str(awb).strip()
                 match = df[df["Tracking No_str"] == awb_clean]
@@ -79,48 +73,47 @@ if st.button("Process"):
                     extern = str(match.iloc[0]["Extern Order No"])
                     st.write(f"Page {i+1}: Matched -> {extern}")
                     
-                    # --- DIRECT IMAGE STAMP LOGIC ---
-                    # Hum direct image array par canvas draw karenge, koi PDF conflict nahi hoga
-                    draw = ImageDraw.Draw(img)
+                    # Target exact page layer
+                    page = doc[i]
                     
-                    # Target Location: Amazon Shipping ke bottom row me left side box alignment
-                    # Image pixels ke hisab se exact coordinates scale down lock: (X=40, Y=height-60)
-                    w, h = img.size
-                    position = (40, h - 60)
+                    # --- BADA FONT AUR POSITION SETTING ---
+                    # 4x6 page par "amazon shipping" ke left box ke coordinates:
+                    # X=20 (Left alignment), Y=540 (Bottom alignment as per 4x6 grid ratio)
+                    position = fitz.Point(20, 540)
                     
-                    # Image par text write command execution
-                    draw.text(position, f"{extern}", fill=(0, 0, 0))
+                    # fontname='helv' (Helvetica) and fontsize=16 with standard black fill
+                    # Agar aapko aur bada chahiye toh size 16 ko 18 ya 20 kar sakte hain
+                    page.insert_text(
+                        position, 
+                        f"{extern}", 
+                        fontsize=16, 
+                        fontname="helv", 
+                        color=(0, 0, 0)
+                    )
                     match_count += 1
                 else:
-                    st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
+                    st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND")
             else:
                 st.write(f"Page {i+1}: BARCODE READ FAILED")
-                
-            # Processed ya unmodified image ko final list me store karein
-            processed_images.append(img.convert("RGB"))
         
-        # 3. FRESH PDF CONVERSION FROM UPDATED IMAGES
-        if match_count > 0 and len(processed_images) > 0:
-            output_pdf_path = os.path.join("temp", f"Mapped_{pdf_file.name}")
+        # Save output by locking original layout matrix
+        if match_count > 0:
+            output_pdf_path = os.path.join("temp", f"Processed_4x6_{pdf_file.name}")
+            doc.save(output_pdf_path)
+            doc.close()
             
-            # Pehli image ko baki images ke sath secure bundle banakar save karein
-            processed_images[0].save(
-                output_pdf_path, 
-                save_all=True, 
-                append_images=processed_images[1:]
-            )
-            
-            st.success(f"🎯 Complete! Successfully updated {match_count} pages.")
+            st.success(f"🎯 Complete! {match_count} labels processed in original 4x6 size.")
             
             with open(output_pdf_path, "rb") as f:
-                final_pdf_bytes = f.read()
+                final_bytes = f.read()
                 
             st.download_button(
-                label="📥 Click here to Download Processed PDF",
-                data=final_pdf_bytes,
-                file_name=f"Processed_{pdf_file.name}",
+                label="📥 Click here to Download 4x6 Processed PDF",
+                data=final_bytes,
+                file_name=f"Processed_4x6_{pdf_file.name}",
                 mime="application/pdf"
             )
         else:
-            st.error("❌ Matches empty! Koi bhi page final sheet se match nahi hua.")
+            doc.close()
+            st.error("❌ No matches found.")
 
