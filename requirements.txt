@@ -4,3 +4,4 @@ PyMuPDF
 Pillow
 openpyxl
 numpy
+zxing-cpp
