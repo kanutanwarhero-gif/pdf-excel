@@ -4,6 +4,7 @@ from ocr import read_barcode
 import streamlit as st
 import os
 import pandas as pd
+from PIL import Image, ImageDraw, ImageFont  # Image par direct write karne ke liye
 
 st.set_page_config(
     page_title="Amazon Label Mapper",
@@ -45,20 +46,28 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
-        # 1. Column headers clean karein
+        # CSV clean matching setup
         df.columns = [str(c).strip() for c in df.columns]
         df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
-        # 2. Main PDF open karein
-        doc = fitz.open(pdf_path)
+        # Original code se image frames read karna
         images = pdf_to_images(pdf_path)
+        processed_images = []
         match_count = 0
         
-        st.info(f"⚡ Processing {len(images)} pages...")
+        st.info(f"⚡ Total {len(images)} pages process ho rahe hain...")
         
         for i, img in enumerate(images):
             awb = read_barcode(img)
             
+            # Agar img direct PIL Image nahi h, toh ensure karein ki conversion sahi ho
+            if not isinstance(img, Image.Image):
+                # Agar image bytes ya numpy array me h toh handle karne ke liye wrapper
+                try:
+                    img = Image.fromarray(img)
+                except:
+                    pass
+
             if awb:
                 awb_clean = str(awb).strip()
                 match = df[df["Tracking No_str"] == awb_clean]
@@ -70,48 +79,48 @@ if st.button("Process"):
                     extern = str(match.iloc[0]["Extern Order No"])
                     st.write(f"Page {i+1}: Matched -> {extern}")
                     
-                    # Sahi page select karein
-                    page = doc[i]
+                    # --- DIRECT IMAGE STAMP LOGIC ---
+                    # Hum direct image array par canvas draw karenge, koi PDF conflict nahi hoga
+                    draw = ImageDraw.Draw(img)
                     
-                    # --- POSITION LOCK: LEFT SIDE OF AMAZON SHIPPING (BOTTOM) ---
-                    # Amazon shipping ke left side wale blank area ka coordinates:
-                    # X=30 (Left border alignment), Y=950 (Bottom alignment)
-                    position = fitz.Point(30, 950)
+                    # Target Location: Amazon Shipping ke bottom row me left side box alignment
+                    # Image pixels ke hisab se exact coordinates scale down lock: (X=40, Y=height-60)
+                    w, h = img.size
+                    position = (40, h - 60)
                     
-                    # Text insert command without any complex formatting
-                    page.insert_text(
-                        position, 
-                        f"{extern}", 
-                        fontsize=12, 
-                        color=(0, 0, 0)
-                    )
+                    # Image par text write command execution
+                    draw.text(position, f"{extern}", fill=(0, 0, 0))
                     match_count += 1
                 else:
                     st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
             else:
                 st.write(f"Page {i+1}: BARCODE READ FAILED")
+                
+            # Processed ya unmodified image ko final list me store karein
+            processed_images.append(img.convert("RGB"))
         
-        # 3. PDF KO SAHI SE SAVE & CLOSE KARNA (MAIN STEP)
-        if match_count > 0:
-            output_pdf_path = os.path.join("temp", f"Processed_{pdf_file.name}")
+        # 3. FRESH PDF CONVERSION FROM UPDATED IMAGES
+        if match_count > 0 and len(processed_images) > 0:
+            output_pdf_path = os.path.join("temp", f"Mapped_{pdf_file.name}")
             
-            # Pehle current updates ko write karke document physically close karein
-            doc.save(output_pdf_path)
-            doc.close()
+            # Pehli image ko baki images ke sath secure bundle banakar save karein
+            processed_images[0].save(
+                output_pdf_path, 
+                save_all=True, 
+                append_images=processed_images[1:]
+            )
             
-            st.success(f"🎯 Done! Total {match_count} labels updated.")
+            st.success(f"🎯 Complete! Successfully updated {match_count} pages.")
             
-            # Ab save ki hui file ko cleanly read karke download button me dein
             with open(output_pdf_path, "rb") as f:
-                processed_bytes = f.read()
+                final_pdf_bytes = f.read()
                 
             st.download_button(
                 label="📥 Click here to Download Processed PDF",
-                data=processed_bytes,
+                data=final_pdf_bytes,
                 file_name=f"Processed_{pdf_file.name}",
                 mime="application/pdf"
             )
         else:
-            doc.close()
-            st.error("❌ Kisi bhi label ka match nahi mila.")
+            st.error("❌ Matches empty! Koi bhi page final sheet se match nahi hua.")
 
