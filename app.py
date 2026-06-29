@@ -4,7 +4,6 @@ from ocr import read_barcode
 import streamlit as st
 import os
 import pandas as pd
-from PIL import Image, ImageDraw
 
 st.set_page_config(
     page_title="Amazon Label Mapper",
@@ -12,7 +11,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("📦 Amazon Label Mapper (Final Location & Size Locked)")
+st.title("📦 Amazon Label Mapper (Large Font & Fixed Location)")
 st.write("Upload Shipping Label PDF and CSV/Excel")
 
 pdf_file = st.file_uploader("Upload PDF", type=["pdf"])
@@ -46,11 +45,15 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
+        # CSV formatting clean up
         df.columns = [str(c).strip() for c in df.columns]
         df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
+        # 1. Original PDF open karenge text overlay ke liye
+        doc = fitz.open(pdf_path)
+        
+        # 2. Aapka barcode function frames fetch karega scan ke liye
         images = pdf_to_images(pdf_path)
-        processed_images = []
         match_count = 0
         
         st.info(f"⚡ Processing {len(images)} pages...")
@@ -58,12 +61,6 @@ if st.button("Process"):
         for i, img in enumerate(images):
             awb = read_barcode(img)
             
-            if not isinstance(img, Image.Image):
-                try:
-                    img = Image.fromarray(img)
-                except:
-                    pass
-
             if awb:
                 awb_clean = str(awb).strip()
                 match = df[df["Tracking No_str"] == awb_clean]
@@ -75,58 +72,49 @@ if st.button("Process"):
                     extern = str(match.iloc[0]["Extern Order No"])
                     st.write(f"Page {i+1}: Matched -> {extern}")
                     
-                    # Image draw canvas open karein
-                    draw = ImageDraw.Draw(img)
-                    w, h = img.size
+                    # Original PDF page layer target karenge
+                    page = doc[i]
                     
-                    # --- PERFECT LOCATION & BADA SIZE LOCK ---
-                    # X=30 (Left border se strict space), Y=h-75 (Amazon shipping wale exact layer ki height)
-                    # Agar text thoda upar-niche karna ho toh '75' ko kam/zyada kar sakte hain
-                    position = (30, h - 75)
+                    # --- LOCATION ADJUSTMENT FOR PERFECT FIT ---
+                    # X=15 (Left border alignment)
+                    # Y = page.rect.height - 45 (Amazon Shipping logo ke bilkul left wala row area)
+                    x_pos = 15
+                    y_pos = page.rect.height - 45
+                    position = fitz.Point(x_pos, y_pos)
                     
-                    # Text ko BOLD aur BADA karne ke liye hum use micro-offset (stroke matrix) ke sath 
-                    # multiple times draw kar rahe hain. Isse bina font file ke text ekdum mota aur bada chhapega.
-                    for dx in [-2, -1, 0, 1, 2]:
-                        for dy in [-2, -1, 0, 1, 2]:
-                            draw.text((position[0] + dx, position[1] + dy), f"{extern}", fill=(0, 0, 0))
-                    
+                    # --- BADA AUR BOLD FONT WITHOUT CONFLICT ---
+                    # Hum Helvetica-Bold ('helv-bold') use kar rahe hain jisme font size 24 lock kiya h
+                    # Isse text kafi mota aur saaf padhne layak aayega
+                    page.insert_text(
+                        position, 
+                        f"{extern}", 
+                        fontsize=24, 
+                        fontname="helv-bold", 
+                        color=(0, 0, 0)
+                    )
                     match_count += 1
                 else:
                     st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
             else:
                 st.write(f"Page {i+1}: BARCODE READ FAILED")
-                
-            processed_images.append(img.convert("RGB"))
         
-        # --- ORIGINAL 4x6 INCHES BOUNDARY LOCK ---
-        if match_count > 0 and len(processed_images) > 0:
-            output_pdf_path = os.path.join("temp", f"Final_4x6_{pdf_file.name}")
+        # Save output by locking original layout matrix
+        if match_count > 0:
+            output_pdf_path = os.path.join("temp", f"Processed_4x6_Large_{pdf_file.name}")
+            doc.save(output_pdf_path)
+            doc.close()
             
-            final_pdf = fitz.open()
-            for p_img in processed_images:
-                # 4x6 Inches Standard Dimensions = 288 x 432 points
-                page = final_pdf.new_page(width=288, height=432)
-                
-                img_byte_arr = io.BytesIO() if 'io' in locals() else __import__('io').BytesIO()
-                p_img.save(img_byte_arr, format='JPEG', quality=100)
-                img_bytes = img_byte_arr.getvalue()
-                
-                page.insert_image(page.rect, stream=img_bytes)
-                
-            final_pdf.save(output_pdf_path)
-            final_pdf.close()
-            
-            st.success(f"🎯 Done! Successfully matched {match_count} labels in exact 4x6 format.")
+            st.success(f"🎯 Done! Total {match_count} labels processed with large text.")
             
             with open(output_pdf_path, "rb") as f:
-                final_pdf_bytes = f.read()
+                final_bytes = f.read()
                 
             st.download_button(
-                label="📥 Click here to Download Final 4x6 PDF",
-                data=final_pdf_bytes,
+                label="📥 Click here to Download Final Large Text PDF",
+                data=final_bytes,
                 file_name=f"Processed_4x6_{pdf_file.name}",
                 mime="application/pdf"
             )
         else:
-            st.error("❌ Matches empty!")
-
+            doc.close()
+            st.error("❌ No matches found.")
