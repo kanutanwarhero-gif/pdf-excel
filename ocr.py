@@ -1,10 +1,10 @@
 import zxingcpp
 
 def read_barcode(image):
+    results = zxingcpp.read_barcodes(image)
 
-    result = zxingcpp.read_barcode(image)
+    for r in results:
+        if str(r.format) == "Code128":
+            return r.text
 
-    if result is None:
-        return None
-
-    return result.text
+    return None
