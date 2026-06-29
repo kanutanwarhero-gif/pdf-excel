@@ -4,7 +4,6 @@ from ocr import read_barcode
 import streamlit as st
 import os
 import pandas as pd
-from PIL import Image, ImageDraw, ImageFont
 
 st.set_page_config(
     page_title="Amazon Label Mapper",
@@ -12,7 +11,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("📦 Amazon Label Mapper (4x6 Size & Font Fixed)")
+st.title("📦 Amazon Label Mapper (Perfect 4x6)")
 st.write("Upload Shipping Label PDF and CSV/Excel")
 
 pdf_file = st.file_uploader("Upload PDF", type=["pdf"])
@@ -46,11 +45,13 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
+        # CSV clear data alignment
         df.columns = [str(c).strip() for c in df.columns]
         df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
+        # Original PDF ko directly edit karenge taaki orientation aur dimensions (4x6) 100% lock rahein
+        doc = fitz.open(pdf_path)
         images = pdf_to_images(pdf_path)
-        processed_images = []
         match_count = 0
         
         st.info(f"⚡ Processing {len(images)} pages...")
@@ -58,12 +59,6 @@ if st.button("Process"):
         for i, img in enumerate(images):
             awb = read_barcode(img)
             
-            if not isinstance(img, Image.Image):
-                try:
-                    img = Image.fromarray(img)
-                except:
-                    pass
-
             if awb:
                 awb_clean = str(awb).strip()
                 match = df[df["Tracking No_str"] == awb_clean]
@@ -75,63 +70,49 @@ if st.button("Process"):
                     extern = str(match.iloc[0]["Extern Order No"])
                     st.write(f"Page {i+1}: Matched -> {extern}")
                     
-                    # --- BADA FONT DRAW LOGIC ON IMAGE ---
-                    draw = ImageDraw.Draw(img)
-                    w, h = img.size
+                    page = doc[i]
                     
-                    # Size bada karne ke liye hum standard bitmap text ko multiplier ke sath scale kar rahe hain
-                    # Yahan position "amazon shipping" ke bottom left ke mutabik set ki h
-                    position = (30, h - 80)
+                    # --- CRITICAL FIX: POSITION AND TEXT FOR 4x6 LAYOUT ---
+                    # X=25 (Left shift), Y=page.rect.height - 40 (Bottom alignment dynamically calculated)
+                    # Isse orientation hamesha seedhi rahegi
+                    y_pos = page.rect.height - 40
+                    position = fitz.Point(25, y_pos)
                     
-                    # Pillow default font load karke use upscale text overlay denge
-                    # Taaki door se bada aur clear bold jaisa dikhe
-                    try:
-                        # Streamlit par defaults ke sath bina crash ke clear bada drawing text:
-                        draw.text(position, f"{extern}", fill=(0, 0, 0), stroke_width=2, stroke_fill=(0, 0, 0))
-                    except:
-                        draw.text(position, f"{extern}", fill=(0, 0, 0))
-                        
+                    # Built-in safe standard font inject ('helv' standard layout engine)
+                    # Font size 18 kiya h taaki thermal print me bade aksharon me saaf dikhe
+                    page.insert_text(
+                        position, 
+                        f"{extern}", 
+                        fontsize=18, 
+                        fontname="helv", 
+                        color=(0, 0, 0)
+                    )
                     match_count += 1
                 else:
                     st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
             else:
                 st.write(f"Page {i+1}: BARCODE READ FAILED")
-                
-            processed_images.append(img.convert("RGB"))
         
-        # --- FIXED 4x6 INCHES CONVERSION MATRIX ---
-        if match_count > 0 and len(processed_images) > 0:
-            output_pdf_path = os.path.join("temp", f"Final_4x6_{pdf_file.name}")
+        # Final secure saving
+        if match_count > 0:
+            output_pdf_path = os.path.join("temp", f"Final_Fixed_{pdf_file.name}")
             
-            # Fresh PDF Object jisme hum exact 4x6 sizes bind karenge
-            final_pdf = fitz.open()
+            # Save configuration flags updated to freeze changes inside structure permanently
+            doc.save(output_pdf_path, garbage=3, deflate=True)
+            doc.close()
             
-            for p_img in processed_images:
-                # 4x6 Inches = 288 x 432 Points (Standard Shipping Label Size)
-                page = final_pdf.new_page(width=288, height=432)
-                
-                # Image ko temporarily byte buffer me save karke PDF frame me fit karenge
-                img_byte_arr = io.BytesIO()
-                p_img.save(img_byte_arr, format='JPEG', quality=100)
-                img_bytes = img_byte_arr.getvalue()
-                
-                # Pure 4x6 canvas par layout lock kar diya
-                page.insert_image(page.rect, stream=img_bytes)
-                
-            final_pdf.save(output_pdf_path)
-            final_pdf.close()
-            
-            st.success(f"🎯 Complete! Successfully updated {match_count} labels in exact 4x6 format.")
+            st.success(f"🎯 Syllabus locked! {match_count} labels processed flawlessly.")
             
             with open(output_pdf_path, "rb") as f:
-                final_pdf_bytes = f.read()
+                final_bytes = f.read()
                 
             st.download_button(
-                label="📥 Click here to Download Processed 4x6 PDF",
-                data=final_pdf_bytes,
+                label="📥 Click here to Download Final 4x6 PDF",
+                data=final_bytes,
                 file_name=f"Processed_4x6_{pdf_file.name}",
                 mime="application/pdf"
             )
         else:
-            st.error("❌ Matches empty! Data update fail.")
+            doc.close()
+            st.error("❌ Matching process complete, but no records mapped.")
 
