@@ -45,11 +45,11 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
-        # 1. Clean headers and formats
+        # 1. Column headers clean karein
         df.columns = [str(c).strip() for c in df.columns]
         df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
-        # 2. Main PDF wrapper setup
+        # 2. Main PDF open karein
         doc = fitz.open(pdf_path)
         images = pdf_to_images(pdf_path)
         match_count = 0
@@ -70,19 +70,19 @@ if st.button("Process"):
                     extern = str(match.iloc[0]["Extern Order No"])
                     st.write(f"Page {i+1}: Matched -> {extern}")
                     
-                    # Target correct PDF frame page layer
+                    # Sahi page select karein
                     page = doc[i]
                     
-                    # --- POSITION: LEFT SIDE OF AMAZON SHIPPING (BOTTOM) ---
-                    # X=20 (Left alignment border frame), Y=955 (Amazon shipping row height)
-                    position = fitz.Point(20, 955)
+                    # --- POSITION LOCK: LEFT SIDE OF AMAZON SHIPPING (BOTTOM) ---
+                    # Amazon shipping ke left side wale blank area ka coordinates:
+                    # X=30 (Left border alignment), Y=950 (Bottom alignment)
+                    position = fitz.Point(30, 950)
                     
-                    # Direct Standard Font (no custom crash assets)
+                    # Text insert command without any complex formatting
                     page.insert_text(
                         position, 
                         f"{extern}", 
                         fontsize=12, 
-                        fontname="helv",
                         color=(0, 0, 0)
                     )
                     match_count += 1
@@ -91,16 +91,17 @@ if st.button("Process"):
             else:
                 st.write(f"Page {i+1}: BARCODE READ FAILED")
         
-        # 3. CRITICAL SAVING STEP FOR DOWNLOAD BUFFER
+        # 3. PDF KO SAHI SE SAVE & CLOSE KARNA (MAIN STEP)
         if match_count > 0:
-            # Back-end storage clean write update execution
             output_pdf_path = os.path.join("temp", f"Processed_{pdf_file.name}")
+            
+            # Pehle current updates ko write karke document physically close karein
             doc.save(output_pdf_path)
             doc.close()
             
-            st.success(f"🎯 Complete! Total {match_count} labels updated successfully.")
+            st.success(f"🎯 Done! Total {match_count} labels updated.")
             
-            # Read back updated file to stream over memory download button
+            # Ab save ki hui file ko cleanly read karke download button me dein
             with open(output_pdf_path, "rb") as f:
                 processed_bytes = f.read()
                 
@@ -112,5 +113,5 @@ if st.button("Process"):
             )
         else:
             doc.close()
-            st.error("❌ Matches completely empty. Data match fail.")
+            st.error("❌ Kisi bhi label ka match nahi mila.")
 
