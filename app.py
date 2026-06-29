@@ -83,13 +83,13 @@ if st.button("Process"):
                     # --- PERFECT LOCATION & CRISTAL CLEAR BADA SIZE ---
                     # Built-in engine font size ko direct 35 scale kiya taaki door se bold chamke
                     try:
-                        font = ImageFont.load_default(size=35)
+                        font = ImageFont.load_default(size=30)
                     except:
                         font = ImageFont.load_default() # Fallback for older PIL
                     
                     # Target Point: Amazon shipping logo ke left me blank layout box area
                     # X=35 (Left border alignment), Y=h - 85 (Bottom row row match logic)
-                    position = (35, h - 85)
+                    position = (35, h - 70)
                     
                     # Direct Print on Image canvas
                     draw.text(position, f"{extern}", fill=(0, 0, 0), font=font)
