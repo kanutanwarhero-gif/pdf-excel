@@ -76,13 +76,12 @@ if st.button("Process"):
         images = pdf_to_images(pdf_path)
 
         for i, img in enumerate(images):
+            awb = read_barcode(img)
 
-    awb = read_barcode(img)
+            match = df[df["Tracking No"].astype(str) == str(awb)]
 
-    match = df[df["Tracking No"].astype(str) == str(awb)]
-
-    if not match.empty:
-        extern = match.iloc[0]["Extern Order No"]
-        st.write(f"Page {i+1}: {extern}")
-    else:
-        st.write(f"Page {i+1}: NOT FOUND")
+            if not match.empty:
+                extern = match.iloc[0]["Extern Order No"]
+                st.write(f"Page {i+1}: {extern}")
+            else:
+                st.write(f"Page {i+1}: NOT FOUND")
