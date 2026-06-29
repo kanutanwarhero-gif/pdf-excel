@@ -100,7 +100,7 @@ if st.button("Process"):
                     position = (40, h - 90)
                     
                     # Print text to canvas directly
-                    draw.text(position, f"{extern}", fill=(0, 0, 0), font=font)
+                    draw.text(position, f"{extern}", fill=(0, 0, 0), font=24)
                     match_count += 1
                 else:
                     st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND")
