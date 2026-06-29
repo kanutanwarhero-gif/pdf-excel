@@ -45,68 +45,72 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
-        # 1. Clean CSV Tracking numbers to avoid match failure
+        # 1. Clean headers and formats
         df.columns = [str(c).strip() for c in df.columns]
-        if 'Tracking No' in df.columns and 'Extern Order No' in df.columns:
-            df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        
+        # 2. Main PDF wrapper setup
+        doc = fitz.open(pdf_path)
+        images = pdf_to_images(pdf_path)
+        match_count = 0
+        
+        st.info(f"⚡ Processing {len(images)} pages...")
+        
+        for i, img in enumerate(images):
+            awb = read_barcode(img)
             
-            # 2. PyMuPDF se main document open karein text stamp karne ke liye
-            doc = fitz.open(pdf_path)
-            
-            # Aapka function image convert karega barcode reading ke liye
-            images = pdf_to_images(pdf_path)
-            match_count = 0
-            
-            st.info(f"⚡ Total {len(images)} pages process ho rahe hain...")
-            
-            for i, img in enumerate(images):
-                awb = read_barcode(img)
+            if awb:
+                awb_clean = str(awb).strip()
+                match = df[df["Tracking No_str"] == awb_clean]
                 
-                if awb:
-                    awb_clean = str(awb).strip()
-                    # Clean match verification
-                    match = df[df["Tracking No_str"] == awb_clean]
+                if match.empty:
+                    match = df[df["Tracking No_str"].str.contains(awb_clean, na=False)]
+                
+                if not match.empty:
+                    extern = str(match.iloc[0]["Extern Order No"])
+                    st.write(f"Page {i+1}: Matched -> {extern}")
                     
-                    if match.empty:
-                        match = df[df["Tracking No_str"].str.contains(awb_clean, na=False)]
+                    # Target correct PDF frame page layer
+                    page = doc[i]
                     
-                    if not match.empty:
-                        extern = str(match.iloc[0]["Extern Order No"])
-                        st.write(f"Page {i+1}: Matched -> {extern}")
-                        
-                        # Target specific page
-                        page = doc[i]
-                        
-                        # --- BOTTOM LEFT OF AMAZON SHIPPING ---
-                        # Amazon Shipping label ke bottom left me blank box ke paas coordinates:
-                        # X = 20 (Left aligned), Y = 955 (Bottom bar alignment)
-                        position = fitz.Point(20, 955)
-                        
-                        # Bina kisi external font file dependency ke clean extraction text insert:
-                        page.insert_text(
-                            position, 
-                            f"EXT: {extern}", 
-                            fontsize=14, 
-                            color=(0, 0, 0)
-                        )
-                        match_count += 1
-                    else:
-                        st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
+                    # --- POSITION: LEFT SIDE OF AMAZON SHIPPING (BOTTOM) ---
+                    # X=20 (Left alignment border frame), Y=955 (Amazon shipping row height)
+                    position = fitz.Point(20, 955)
+                    
+                    # Direct Standard Font (no custom crash assets)
+                    page.insert_text(
+                        position, 
+                        f"{extern}", 
+                        fontsize=12, 
+                        fontname="helv",
+                        color=(0, 0, 0)
+                    )
+                    match_count += 1
                 else:
-                    st.write(f"Page {i+1}: BARCODE READ FAILED")
-            
-            # 3. Processed file ko download ke liye save karein
-            if match_count > 0:
-                st.success(f"🎯 Complete! Successfully updated {match_count} pages.")
-                output_pdf_bytes = doc.write()
-                st.download_button(
-                    label="📥 Processed PDF Download Karein",
-                    data=output_pdf_bytes,
-                    file_name="Mapped_Amazon_Labels.pdf",
-                    mime="application/pdf"
-                )
+                    st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
             else:
-                st.error("❌ Kisi bhi label ka barcode excel data se match nahi hua.")
+                st.write(f"Page {i+1}: BARCODE READ FAILED")
+        
+        # 3. CRITICAL SAVING STEP FOR DOWNLOAD BUFFER
+        if match_count > 0:
+            # Back-end storage clean write update execution
+            output_pdf_path = os.path.join("temp", f"Processed_{pdf_file.name}")
+            doc.save(output_pdf_path)
+            doc.close()
+            
+            st.success(f"🎯 Complete! Total {match_count} labels updated successfully.")
+            
+            # Read back updated file to stream over memory download button
+            with open(output_pdf_path, "rb") as f:
+                processed_bytes = f.read()
+                
+            st.download_button(
+                label="📥 Click here to Download Processed PDF",
+                data=processed_bytes,
+                file_name=f"Processed_{pdf_file.name}",
+                mime="application/pdf"
+            )
         else:
-            st.error("❌ Excel sheet headers verify karein ('Tracking No' aur 'Extern Order No' hona chahiye).")
+            doc.close()
+            st.error("❌ Matches completely empty. Data match fail.")
 
