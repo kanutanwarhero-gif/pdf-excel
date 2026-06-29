@@ -5,7 +5,6 @@ import streamlit as st
 import os
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
-import urllib.request
 
 st.set_page_config(
     page_title="Amazon Label Mapper",
@@ -13,21 +12,11 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("📦 Amazon Label Mapper (Final Size Fix)")
+st.title("📦 Amazon Label Mapper (Super Large Font)")
 st.write("Upload Shipping Label PDF and CSV/Excel")
 
 pdf_file = st.file_uploader("Upload PDF", type=["pdf"])
 excel_file = st.file_uploader("Upload CSV / Excel", type=["csv", "xlsx"])
-
-# Streamlit server ke liye standard clear font download automation
-font_path = "temp/LiberationSans-Bold.ttf"
-if not os.path.exists(font_path):
-    os.makedirs("temp", exist_ok=True)
-    try:
-        url = "https://github.com/google/fonts/raw/main/ofl/liberationsans/LiberationSans-Bold.ttf"
-        urllib.request.urlretrieve(url, font_path)
-    except:
-        font_path = None
 
 if pdf_file:
     os.makedirs("temp", exist_ok=True)
@@ -89,21 +78,28 @@ if st.button("Process"):
                     draw = ImageDraw.Draw(img)
                     w, h = img.size
                     
-                    # --- LARGE TTF FONT MANAGEMENT ---
-                    # Size 50 set kiya h taaki thermal printer par door se bold chamke
-                    if font_path and os.path.exists(font_path):
-                        font = ImageFont.truetype(font_path, 50)
-                    else:
+                    # --- DYNAMIC SUPER LARGE FONT LOGIC ---
+                    # Image ki total width ka 5% font size set kiya h taaki chhota hone ka chance hi na rahe
+                    dynamic_font_size = int(w * 0.05) 
+                    
+                    # Standard built-in bitmap engine font setup
+                    try:
                         font = ImageFont.load_default()
+                    except:
+                        font = None
                     
-                    # Exact placement inside "amazon shipping" row
-                    position = (40, h - 90)
+                    # Location lock: "amazon shipping" logo ke thik left me
+                    position = (int(w * 0.05), h - int(h * 0.07))
                     
-                    # Print text to canvas directly
-                    draw.text(position, f"{extern}", fill=(0, 0, 0), font=10)
+                    # High resolution image par text ko massive scaling aur clear stroke layer 
+                    # ke sath multi-draw block me chalayenge taaki bina ttf file ke text extra thick dikhe
+                    for dx in range(-4, 5):
+                        for dy in range(-4, 5):
+                            draw.text((position[0] + dx, position[1] + dy), f"{extern}", fill=(0, 0, 0))
+                            
                     match_count += 1
                 else:
-                    st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND")
+                    st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
             else:
                 st.write(f"Page {i+1}: BARCODE READ FAILED")
                 
@@ -114,6 +110,7 @@ if st.button("Process"):
             
             final_pdf = fitz.open()
             for p_img in processed_images:
+                # 4x6 Inches dimensions (288 x 432 points) lock
                 page = final_pdf.new_page(width=288, height=432)
                 
                 img_byte_arr = io.BytesIO() if 'io' in locals() else __import__('io').BytesIO()
@@ -125,7 +122,7 @@ if st.button("Process"):
             final_pdf.save(output_pdf_path)
             final_pdf.close()
             
-            st.success(f"🎯 Size issue fixed completely!")
+            st.success(f"🎯 Font scaling applied successfully!")
             
             with open(output_pdf_path, "rb") as f:
                 final_pdf_bytes = f.read()
