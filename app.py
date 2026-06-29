@@ -13,7 +13,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("📦 Amazon Label Mapper (Final Location & Size)")
+st.title("📦 Amazon Label Mapper (Bold Lock)")
 st.write("Upload Shipping Label PDF and CSV/Excel")
 
 pdf_file = st.file_uploader("Upload PDF", type=["pdf"])
@@ -47,7 +47,6 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
-        # CSV clear data cleaning
         df.columns = [str(c).strip() for c in df.columns]
         df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
@@ -80,19 +79,24 @@ if st.button("Process"):
                     draw = ImageDraw.Draw(img)
                     w, h = img.size
                     
-                    # --- PERFECT LOCATION & CRISTAL CLEAR BADA SIZE ---
-                    # Built-in engine font size ko direct 35 scale kiya taaki door se bold chamke
+                    # Font structure with upscale size
                     try:
-                        font = ImageFont.load_default(size=28)
+                        font = ImageFont.load_default(size=45)
                     except:
-                        font = ImageFont.load_default() # Fallback for older PIL
+                        font = ImageFont.load_default()
                     
-                    # Target Point: Amazon shipping logo ke left me blank layout box area
-                    # X=35 (Left border alignment), Y=h - 85 (Bottom row row match logic)
-                    position = (35, h - 85)
+                    # Location
+                    position = (35, h - 90)
                     
-                    # Direct Print on Image canvas
-                    draw.text(position, f"{extern}", fill=(0, 0, 0), font=font)
+                    # STROKE LOCK FOR BOLD
+                    draw.text(
+                        position, 
+                        f"{extern}", 
+                        fill=(0, 0, 0), 
+                        font=font,
+                        stroke_width=4,
+                        stroke_fill=(0, 0, 0)
+                    )
                     match_count += 1
                 else:
                     st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
@@ -101,13 +105,11 @@ if st.button("Process"):
                 
             processed_images.append(img.convert("RGB"))
         
-        # --- 4x6 THERMAL RATIO PACKAGER ---
         if match_count > 0 and len(processed_images) > 0:
             output_pdf_path = os.path.join("temp", f"Final_4x6_{pdf_file.name}")
             
             final_pdf = fitz.open()
             for p_img in processed_images:
-                # 4x6 thermal printer metrics layout window
                 page = final_pdf.new_page(width=288, height=432)
                 
                 img_byte_arr = io.BytesIO()
@@ -119,16 +121,17 @@ if st.button("Process"):
             final_pdf.save(output_pdf_path)
             final_pdf.close()
             
-            st.success(f"🎯 Complete! Mapped labels are ready.")
+            st.success(f"🎯 Complete! Bold mapping is ready.")
             
             with open(output_pdf_path, "rb") as f:
                 final_pdf_bytes = f.read()
                 
             st.download_button(
-                label="📥 Click here to Download Final 4x6 PDF",
+                label="📥 Click here to Download Final Bold 4x6 PDF",
                 data=final_pdf_bytes,
                 file_name=f"Processed_4x6_{pdf_file.name}",
                 mime="application/pdf"
             )
         else:
             st.error("❌ Process complete, but no matches recorded.")
+
