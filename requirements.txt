@@ -1,4 +1,10 @@
-streamlit
-pandas
-pymupdf
-pytesseract
+streamlit==1.45.1
+pandas==2.2.3
+pymupdf==1.26.1
+easyocr==1.7.2
+opencv-python-headless==4.11.0.86
+numpy==2.2.6
+Pillow==11.2.1
+openpyxl==3.1.5
+python-barcode
+pyzbar
