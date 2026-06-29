@@ -5,6 +5,7 @@ import streamlit as st
 import os
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
+import io
 
 st.set_page_config(
     page_title="Amazon Label Mapper",
@@ -12,7 +13,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("📦 Amazon Label Mapper (Super Large Font)")
+st.title("📦 Amazon Label Mapper (Final Location & Size)")
 st.write("Upload Shipping Label PDF and CSV/Excel")
 
 pdf_file = st.file_uploader("Upload PDF", type=["pdf"])
@@ -46,6 +47,7 @@ if st.button("Process"):
     elif excel_file is None:
         st.error("Upload Excel")
     else:
+        # CSV clear data cleaning
         df.columns = [str(c).strip() for c in df.columns]
         df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
@@ -78,25 +80,19 @@ if st.button("Process"):
                     draw = ImageDraw.Draw(img)
                     w, h = img.size
                     
-                    # --- DYNAMIC SUPER LARGE FONT LOGIC ---
-                    # Image ki total width ka 5% font size set kiya h taaki chhota hone ka chance hi na rahe
-                    dynamic_font_size = int(w * 0.05) 
-                    
-                    # Standard built-in bitmap engine font setup
+                    # --- PERFECT LOCATION & CRISTAL CLEAR BADA SIZE ---
+                    # Built-in engine font size ko direct 35 scale kiya taaki door se bold chamke
                     try:
-                        font = ImageFont.load_default()
+                        font = ImageFont.load_default(size=35)
                     except:
-                        font = None
+                        font = ImageFont.load_default() # Fallback for older PIL
                     
-                    # Location lock: "amazon shipping" logo ke thik left me
-                    position = (int(w * 0.05), h - int(h * 0.07))
+                    # Target Point: Amazon shipping logo ke left me blank layout box area
+                    # X=35 (Left border alignment), Y=h - 85 (Bottom row row match logic)
+                    position = (35, h - 85)
                     
-                    # High resolution image par text ko massive scaling aur clear stroke layer 
-                    # ke sath multi-draw block me chalayenge taaki bina ttf file ke text extra thick dikhe
-                    for dx in range(-4, 5):
-                        for dy in range(-4, 5):
-                            draw.text((position[0] + dx, position[1] + dy), f"{extern}", fill=(0, 0, 0))
-                            
+                    # Direct Print on Image canvas
+                    draw.text(position, f"{extern}", fill=(0, 0, 0), font=font)
                     match_count += 1
                 else:
                     st.write(f"Page {i+1}: AWB `{awb_clean}` NOT FOUND IN EXCEL")
@@ -105,15 +101,16 @@ if st.button("Process"):
                 
             processed_images.append(img.convert("RGB"))
         
+        # --- 4x6 THERMAL RATIO PACKAGER ---
         if match_count > 0 and len(processed_images) > 0:
             output_pdf_path = os.path.join("temp", f"Final_4x6_{pdf_file.name}")
             
             final_pdf = fitz.open()
             for p_img in processed_images:
-                # 4x6 Inches dimensions (288 x 432 points) lock
+                # 4x6 thermal printer metrics layout window
                 page = final_pdf.new_page(width=288, height=432)
                 
-                img_byte_arr = io.BytesIO() if 'io' in locals() else __import__('io').BytesIO()
+                img_byte_arr = io.BytesIO()
                 p_img.save(img_byte_arr, format='JPEG', quality=100)
                 img_bytes = img_byte_arr.getvalue()
                 
@@ -122,16 +119,16 @@ if st.button("Process"):
             final_pdf.save(output_pdf_path)
             final_pdf.close()
             
-            st.success(f"🎯 Font scaling applied successfully!")
+            st.success(f"🎯 Complete! Mapped labels are ready.")
             
             with open(output_pdf_path, "rb") as f:
                 final_pdf_bytes = f.read()
                 
             st.download_button(
-                label="📥 Click here to Download Processed 4x6 PDF",
+                label="📥 Click here to Download Final 4x6 PDF",
                 data=final_pdf_bytes,
                 file_name=f"Processed_4x6_{pdf_file.name}",
                 mime="application/pdf"
             )
         else:
-            st.error("❌ Matches empty!")
+            st.error("❌ Process complete, but no matches recorded.")
