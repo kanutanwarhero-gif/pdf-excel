@@ -10,7 +10,7 @@ import io
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 st.set_page_config(page_title="AWB to External Order Linker", layout="centered")
-st.title("📦 Perfect Bulk AWB to External Order Linker")
+st.title("📦 Final Perfect AWB to External Order Linker")
 st.write("Multi-page Scanned PDF aur Manifest (CSV) upload karein.")
 
 uploaded_pdf = st.file_uploader("1. Scanned Shipping Label (PDF) Upload Karein", type=["pdf"])
@@ -23,7 +23,7 @@ if uploaded_pdf and uploaded_csv:
         df.columns = [str(c).strip() for c in df.columns]
         
         if 'Tracking No' in df.columns and 'Extern Order No' in df.columns:
-            # Clean tracking numbers
+            # CSV ke tracking numbers ko cleanly string me convert karein aur spaces hatayein
             df['Tracking No_str'] = df['Tracking No'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             
             # 2. PDF Open Karen
@@ -31,7 +31,7 @@ if uploaded_pdf and uploaded_csv:
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             total_pages = len(doc)
             
-            st.info(f"🔄 Total {total_pages} pages process ho rhe hain, kripya thoda intezar karein...")
+            st.info(f"🔄 Total {total_pages} pages process ho rhe hain...")
             
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -42,51 +42,48 @@ if uploaded_pdf and uploaded_csv:
                 status_text.text(f"Processing page {page_num + 1} of {total_pages}...")
                 page = doc[page_num]
                 
-                # High DPI par page render karein taaki text clear dikhe
+                # Image render karein OCR ke liye
                 pix = page.get_pixmap(dpi=200)
                 img_data = pix.tobytes("png")
                 img = Image.open(io.BytesIO(img_data))
                 
                 width, height = img.size
                 
-                # --- SMART CROP FOR AWB ZONE ---
-                # Amazon label me AWB middle se bottom ke beech me hota h (40% se 85% height tak)
-                # Pure page ka noise (jaise top pin code ya address) cut karne ke liye crop area:
+                # --- BARCODE & AWB AREA CROP ---
+                # Barcode aur AWB hamesha label ke mid-bottom section me hota h (50% se 80% height tak)
                 left = int(width * 0.05)
-                top_crop = int(height * 0.40)
+                top_crop = int(height * 0.50)
                 right = int(width * 0.95)
-                bottom = int(height * 0.85)
+                bottom = int(height * 0.80)
                 
                 cropped_img = img.crop((left, top_crop, right, bottom))
                 
-                # Tesseract OCR sirf is cropped zone par chalayein (Keval digits read karne ki setting ke sath)
-                # custom_config se OCR sirf digits aur space dhundega jo speed aur accuracy badha dega
-                custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789AWBawb:_-'
+                # OCR Se Text Read Karein (Is baar AWB text character whitelist me include kiya h)
+                custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789AWBawb:_- '
                 page_text = pytesseract.image_to_string(cropped_img, config=custom_config)
                 
-                # Pure page ka backup text agar crop me na mile (Fallback)
-                if not any(char.isdigit() for char in page_text):
-                    page_text = pytesseract.image_to_string(img)
+                # Fallback: Agar crop me kuch na mile toh pure page ko use karein
+                if "AWB" not in page_text.upper():
+                    page_text = pytesseract.image_to_string(img, config=custom_config)
                 
-                # 10-15 digit ka AWB/Tracking number search karein
-                digits = re.findall(r'\b\d{10,15}\b', page_text)
+                # --- EXACT AWB EXTRACTION LOGIC ---
+                # 'AWB' ke baad aane wale saare digits ko nikalna h
+                awb_number = None
                 awb_match = re.search(r'AWB\s*[:\-\s]*(\d+)', page_text, re.IGNORECASE)
                 
-                awb_number = None
                 if awb_match:
-                    awb_number = awb_match.group(1)
-                elif digits:
-                    # Agar multi-digits milein toh sabse bada number ya pehla sahi length ka filter karein
-                    for d in digits:
-                        if len(d) >= 11:  # Amazon AWB aamtaur par 12-14 digits ka hota h
-                            awb_number = d
-                            break
-                    if not awb_number:
-                        awb_number = digits[0]
+                    awb_number = awb_match.group(1).strip()
+                else:
+                    # Agar 'AWB' text misread ho jaye par digits mil jayein (11-15 digit)
+                    digits = re.findall(r'\b\d{11,15}\b', page_text)
+                    if digits:
+                        awb_number = digits[0].strip()
                 
                 if awb_number:
-                    # CSV me match karein
+                    # CSV me clean string matching karein
                     matched_row = df[df['Tracking No_str'] == str(awb_number)]
+                    
+                    # Agar exact match na ho toh contains check karein
                     if matched_row.empty:
                         matched_row = df[df['Tracking No_str'].str.contains(str(awb_number), na=False)]
                     
@@ -94,8 +91,7 @@ if uploaded_pdf and uploaded_csv:
                         ext_order_no = str(matched_row.iloc[0]['Extern Order No'])
                         
                         # Amazon Shipping ke bilkul right me blank space par print karne ke liye:
-                        # X=280 (Right shift), Y=45 (Top header line)
-                        # Font size=14 aur Font style=helv-bold
+                        # X=280, Y=45 (Helvetica Bold font size 14)
                         position = fitz.Point(280, 45)
                         
                         page.insert_text(
@@ -112,7 +108,7 @@ if uploaded_pdf and uploaded_csv:
             
             status_text.text(f"✅ Processing Complete! Successfully Matched: {match_count}/{total_pages}")
             
-            # 4. Final PDF output
+            # 4. Final PDF output download
             output_pdf_bytes = doc.write()
             st.download_button(
                 label="📥 All Processed Pages PDF Download Karein",
