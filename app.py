@@ -88,7 +88,7 @@ if st.button("Process"):
                     page.insert_text(
                         position, 
                         f"{extern}", 
-                        fontsize=24, 
+                        fontsize=16, 
                         fontname="helv-bold", 
                         color=(0, 0, 0)
                     )
