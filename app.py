@@ -83,7 +83,7 @@ if st.button("Process"):
                     # --- PERFECT LOCATION & CRISTAL CLEAR BADA SIZE ---
                     # Built-in engine font size ko direct 35 scale kiya taaki door se bold chamke
                     try:
-                        font = ImageFont.load_default(size=32)
+                        font = ImageFont.load_default(size=28)
                     except:
                         font = ImageFont.load_default() # Fallback for older PIL
                     
