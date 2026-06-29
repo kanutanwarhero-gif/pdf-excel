@@ -1,3 +1,4 @@
+import fitz
 from pdf_reader import pdf_to_images
 from ocr import read_barcode
 import streamlit as st
