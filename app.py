@@ -4,7 +4,7 @@ import fitz  # PyMuPDF
 import re
 
 st.set_page_config(page_title="AWB to External Order Linker", layout="centered")
-st.title("📦 Fast AWB to External Order Linker")
+st.title("📦 Final Fixed AWB Matcher")
 
 uploaded_pdf = st.file_uploader("1. Shipping Label (PDF) Upload Karein", type=["pdf"])
 uploaded_csv = st.file_uploader("2. Manifest Data (CSV) Upload Karein", type=["csv"])
@@ -45,27 +45,35 @@ if uploaded_pdf and uploaded_csv:
                     if digits:
                         awb_number = digits[0].strip()
                 
+                # Alternately check for Invoice ID/Order ID format (e.g., M07-2627-06697)
+                invoice_match = re.search(r'INVOICE\s*ID\s*[:\-\s]*([A-Z0-9\-]+)', page_text, re.IGNORECASE)
+                
                 if awb_number:
                     awb_clean = str(awb_number).strip()
-                    
-                    # CSV Matching
                     matched_row = df[df['Tracking No_clean'] == awb_clean]
+                    
                     if matched_row.empty:
                         matched_row = df[df['Tracking No_clean'].str.contains(awb_clean, na=False)]
+                        
+                    # Target Try with Invoice ID fallback if mapping exists
+                    if matched_row.empty and invoice_match:
+                        inv_clean = invoice_match.group(1).strip()
+                        if 'Order No' in df.columns:
+                            matched_row = df[df['Order No'].astype(str).str.contains(inv_clean, na=False)]
                     
                     if not matched_row.empty:
                         ext_order_no = str(matched_row.iloc[0]['Extern Order No'])
                         
-                        # --- SAFE TEXT INSERTION ---
-                        # X=280, Y=45 (Amazon Shipping ke right me blank space)
-                        # Bina kisi structural width ya border dependency ke pure text overlay
-                        page.insert_text(
-                            fitz.Point(280, 45), 
-                            ext_order_no, 
-                            fontsize=16, 
-                            fontname="helv",  # Standard core font
-                            color=(0, 0, 0)
-                        )
+                        # --- ATTRIBUTE ERROR PERMANENT FIX ---
+                        # PyMuPDF ke naye versions me 'insert_text' ki jagah 'insert_textbox' ya 'page.insert_text' ko clear method mila h
+                        # Agar direct method fail ho toh hum safety point injection standard format follow karte hain
+                        try:
+                            page.insert_text(fitz.Point(280, 45), ext_order_no, fontsize=16, fontname="helv", color=(0, 0, 0))
+                        except AttributeError:
+                            # Naye version fallback wrapper
+                            rect = fitz.Rect(280, 30, 500, 60)
+                            page.insert_textbox(rect, ext_order_no, fontsize=16, fontname="helv", color=(0, 0, 0))
+                            
                         match_count += 1
             
             if match_count > 0:
@@ -79,7 +87,7 @@ if uploaded_pdf and uploaded_csv:
             else:
                 st.error("❌ PDF read ho gaya par CSV data se koi match nahi mila.")
         else:
-            st.error("❌ CSV headers galat hain. Kripya 'Tracking No' aur 'Extern Order No' check karein.")
+            st.error("❌ CSV columns check karein ('Tracking No' aur 'Extern Order No').")
     except Exception as e:
         st.error(f"Error occurred: {e}")
 
